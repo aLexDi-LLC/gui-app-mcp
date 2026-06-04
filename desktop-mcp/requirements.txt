@@ -1,0 +1,5 @@
+# Install via: pip install -r requirements.txt
+# python3-pyatspi must be installed via apt (system package)
+mcp>=1.0.0
+pystray>=0.19
+Pillow>=9.0
