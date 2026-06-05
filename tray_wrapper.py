@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
 """
-Playwright MCP tray wrapper.
-Proxies stdio to the playwright-mcp binary and shows a system tray icon.
+Generic MCP stdio tray wrapper.
+Spawns any MCP binary as a child process, proxies stdio,
+and shows a system tray icon with busy/idle state.
+
+Usage:
+  python3 tray_wrapper.py /path/to/binary [binary-args...]
+
+Env:
+  MCP_SERVER_NAME  — display name for the tray icon (default: binary basename)
+  DISPLAY          — X11 display (default: :0.0)
 """
 
 import asyncio
@@ -9,7 +17,6 @@ import colorsys
 import hashlib
 import json
 import os
-import shutil
 import sys
 import threading
 from typing import Optional
@@ -23,16 +30,6 @@ try:
     _TRAY_OK = True
 except ImportError:
     _TRAY_OK = False
-
-SERVER_NAME = "playwright"
-
-PLAYWRIGHT_BIN = (
-    os.environ.get("PLAYWRIGHT_MCP_BIN")
-    or shutil.which("playwright-mcp")
-    or "/home/ladm/.nvm/versions/node/v20.20.2/bin/playwright-mcp"
-)
-
-# ── Tray icon (same logic as gui-desk-control) ────────────────────────
 
 _TRAY_FONTS = [
     "/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf",
@@ -132,17 +129,15 @@ class _TrayIcon:
             self._icon.title = self._name
 
 
-_tray: Optional[_TrayIcon] = _TrayIcon(SERVER_NAME) if _TRAY_OK else None
-
-
 # ── Async stdio proxy ─────────────────────────────────────────────────
 
-async def _proxy():
+async def _proxy(cmd: list[str], tray: Optional[_TrayIcon]):
     proc = await asyncio.create_subprocess_exec(
-        PLAYWRIGHT_BIN, *sys.argv[1:],
+        *cmd,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=sys.stderr,
+        env=os.environ,
     )
 
     loop = asyncio.get_event_loop()
@@ -152,7 +147,7 @@ async def _proxy():
         sys.stdin.buffer,
     )
 
-    pending: dict[str, str] = {}  # request id → tool name
+    pending: dict[str, str] = {}
 
     async def stdin_to_proc():
         while True:
@@ -167,8 +162,8 @@ async def _proxy():
                     req_id = str(msg.get("id", ""))
                     if req_id:
                         pending[req_id] = tool_name
-                    if _tray:
-                        _tray.set_busy(tool_name)
+                    if tray:
+                        tray.set_busy(tool_name)
             except Exception:
                 pass
             proc.stdin.write(line)
@@ -184,8 +179,8 @@ async def _proxy():
                 req_id = str(msg.get("id", ""))
                 if req_id and req_id in pending:
                     del pending[req_id]
-                    if not pending and _tray:
-                        _tray.set_idle()
+                    if not pending and tray:
+                        tray.set_idle()
             except Exception:
                 pass
             sys.stdout.buffer.write(line)
@@ -196,6 +191,15 @@ async def _proxy():
 
 
 if __name__ == "__main__":
-    if _tray:
-        _tray.start()
-    asyncio.run(_proxy())
+    if len(sys.argv) < 2:
+        print("Usage: tray_wrapper.py /path/to/binary [args...]", file=sys.stderr)
+        sys.exit(1)
+
+    cmd = sys.argv[1:]
+    server_name = os.environ.get("MCP_SERVER_NAME") or os.path.basename(cmd[0]).split(".")[0]
+
+    tray = _TrayIcon(server_name) if _TRAY_OK else None
+    if tray:
+        tray.start()
+
+    asyncio.run(_proxy(cmd, tray))
