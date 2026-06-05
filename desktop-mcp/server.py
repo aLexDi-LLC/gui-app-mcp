@@ -151,6 +151,12 @@ class _TrayIcon:
                         enabled=False,
                     ),
                     pystray.Menu.SEPARATOR,
+                    pystray.MenuItem(
+                        "Sound notifications",
+                        _toggle_sound,
+                        checked=lambda _: _sound_enabled,
+                    ),
+                    pystray.Menu.SEPARATOR,
                     pystray.MenuItem("Stop server", _on_stop),
                 ),
             )
@@ -170,6 +176,14 @@ class _TrayIcon:
         if self._icon:
             self._icon.icon = self._img(False)
             self._icon.title = self._name
+
+
+_sound_enabled = True
+
+
+def _toggle_sound(_icon, _item):
+    global _sound_enabled
+    _sound_enabled = not _sound_enabled
 
 
 _tray: Optional[_TrayIcon] = _TrayIcon(mcp.name) if _TRAY_OK else None
@@ -739,6 +753,9 @@ def sound_notify(
     message: text for the notification
     """
     with _busy("sound_notify"):
+        if not _sound_enabled:
+            return json.dumps({"sound": "disabled", "notify": "disabled"})
+
         results = {}
 
         sound_file = _SOUNDS.get(sound, _SOUNDS["complete"])
