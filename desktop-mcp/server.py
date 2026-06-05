@@ -715,6 +715,50 @@ def clipboard_set(text: str) -> str:
         return json.dumps({"error": "no clipboard tool found (install xclip or xsel)"})
 
 
+_SOUNDS = {
+    "complete": "/usr/share/sounds/freedesktop/stereo/complete.oga",
+    "bell":     "/usr/share/sounds/freedesktop/stereo/bell.oga",
+    "error":    "/usr/share/sounds/freedesktop/stereo/dialog-error.oga",
+    "message":  "/usr/share/sounds/freedesktop/stereo/message-new-instant.oga",
+}
+
+
+@mcp.tool()
+def sound_notify(
+    message: str = "Готово",
+    sound: str = "complete",
+    notify: bool = True,
+) -> str:
+    """
+    Play a sound and/or show a desktop notification.
+    Use this when the user asked to be notified when a task is done.
+    Do NOT call this by default — only when explicitly requested.
+
+    sound: 'complete' (default) | 'bell' | 'error' | 'message'
+    notify: also show a desktop notification balloon (default True)
+    message: text for the notification
+    """
+    with _busy("sound_notify"):
+        results = {}
+
+        sound_file = _SOUNDS.get(sound, _SOUNDS["complete"])
+        r = subprocess.run(
+            ["paplay", sound_file],
+            capture_output=True, timeout=5,
+        )
+        results["sound"] = "ok" if r.returncode == 0 else r.stderr.decode()[:100]
+
+        if notify:
+            r2 = subprocess.run(
+                ["notify-send", "--app-name=gui-desk-control",
+                 "--icon=dialog-information", "gui-desk-control", message],
+                capture_output=True, timeout=5,
+            )
+            results["notify"] = "ok" if r2.returncode == 0 else r2.stderr.decode()[:100]
+
+        return json.dumps(results)
+
+
 if __name__ == "__main__":
     if "DISPLAY" not in os.environ:
         os.environ["DISPLAY"] = ":0.0"
