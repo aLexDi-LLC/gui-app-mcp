@@ -132,6 +132,10 @@ class _TrayIcon:
         return img
 
     def start(self):
+        def _on_stop(icon, _item):
+            icon.stop()
+            os._exit(0)
+
         def _run():
             self._icon = pystray.Icon(
                 self._name,
@@ -146,6 +150,8 @@ class _TrayIcon:
                         None,
                         enabled=False,
                     ),
+                    pystray.Menu.SEPARATOR,
+                    pystray.MenuItem("Stop server", _on_stop),
                 ),
             )
             self._icon.run()
